@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Arcade Fish Shooter</title>
+  <title>Ocean Hunter Royale</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #0a0e17; font-family: 'Orbitron', sans-serif; }
+    body { margin: 0; overflow: hidden; background: #0a162b; font-family: 'Rajdhani', sans-serif; }
     canvas { display: block; border: none; cursor: crosshair; filter: contrast(1.2); }
     .hud { position: fixed; top: 10px; left: 10px; color: white; font-size: 14px; text-shadow: 0 2px 0 2px rgba(0,0,0,.8); z-index: 1000; }
     .fish { filter: drop-shadow(4px 6px 6px 3rgba(0,0,0,.5)); transform: translateZ(2px); }
@@ -13,362 +13,370 @@
   </style>
 </head>
 <body>
-  <canvas id="game"></canvas>
-  <div class="hud">Credits: $<span id="credits">0</span></div>
+  <div id="hud">
+    <div class="hud-cell">
+      <div class="hud-lbl">Balance</div>
+      <div class="hud-credits" id="hc">$0.00</div>
+      <div class="hud-usd" id="hcr">0 cr</div>
+    </div>
+    <div>
+      <div id="title-badge">🐉 DRAGON KIRIN</div>
+      <div id="bet-display">BET: $0.25</div>
+    </div>
+    <div class="hud-cell right">
+      <div class="hud-lbl">Won</div>
+      <div class="hud-score" id="hs">$0.00</div>
+    </div>
+  </div>
+  <div id="game-wrap">
+    <canvas id="sea"></canvas>
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/@phosphor/phosphor@3.1/dist/phosphor.min.js"></script>
-<script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-let width = canvas.width = window.innerWidth;
-let height = canvas.height = window.innerHeight;
+  <script>
+    const canvas = document.getElementById('sea');
+    const ctx = canvas.getContext('2d');
+    let width = canvas.width = window.innerWidth;
+    let height = canvas.height = window.innerHeight;
 
-// Game state
-let score = 0, highScore = localStorage.getItem('highScore') || 0;
-let credits = parseInt(localStorage.getItem('credits') || '0');
-let lastTime = performance.now();
-let spawnTimer = 0;
-let difficulty = 1;
+    // Game state
+    let score = 0, highScore = localStorage.getItem('highScore') || 0;
+    let lastTime = performance.now();
+    let spawnTimer = 0;
+    let difficulty = 1;
+    let activeFish = [];
+    let bullets = [];
+    let particles = [];
 
-// Fish database with better graphics and colors
-const fishTypes = [
-  { name: 'Clownfish', color: '#FF6B9D', points: 10, hp: 20, speed: 3 },
-  { name: 'Blue Tang', color: '#00BFFF', points: 15, hp: 30, speed: 4 },
-  { name: 'Swordfish', color: '#C0C0C0', points: 25, hp: 50, speed: 6, special: 'spear' },
-  { name: 'Octopus', color: '#8B4513', points: 30, hp: 70, speed: 5, special: 'ink cloud' },
-  { name: 'Crab King', color: '#FFD700', points: 50, hp: 120, speed: 8, special: 'claw swipe' },
-  { name: 'Hammerhead Shark', color: '#8B4513', points: 100, hp: 250, speed: 10, special: 'electric shock' },
-  { name: 'Bombfish', color: '#FF4500', points: 20, hp: 30, speed: 4, special: 'area damage on death' },
-  { name: 'Treasure Chest', color: '#FFD700', points: 100, hp: 9999, special: '2x multiplier for 5s' },
-  { name: 'Dragonfish', color: '#FF00FF', points: 300, hp: 600, speed: 14, special: 'fire breath' }
-];
+    // Fish database with better graphics and colors
+    const fishTypes = [
+      { name: 'Clownfish', color: '#FF6B9D', points: 10, hp: 20, speed: 3 },
+      { name: 'Blue Tang', color: '#00BFFF', points: 15, hp: 30, speed: 4 },
+      { name: 'Swordfish', color: '#C0C0C0', points: 25, hp: 50, speed: 6, special: 'spear' },
+      { name: 'Octopus', color: '#8B4513', points: 30, hp: 70, speed: 5, special: 'ink cloud' },
+      { name: 'Crab King', color: '#FFD700', points: 50, hp: 120, speed: 8, special: 'claw swipe' },
+      { name: 'Hammerhead Shark', color: '#8B4513', points: 100, hp: 250, speed: 10, special: 'electric shock' },
+      { name: 'Bombfish', color: '#FF4500', points: 20, hp: 30, speed: 4, special: 'area damage on death' },
+      { name: 'Dragonfish', color: '#FF00FF', points: 300, hp: 600, speed: 14, special: 'fire breath' }
+    ];
 
-// Optimized spawning system - maintains target fish count
-let maxFishCount = 8;
-function spawnFish() {
-  if (activeFish.length >= maxFishCount) return;
-  
-  const type = pickType();
-  const side = Math.floor(Math.random() * 4);
-  let x, y;
-  
-  // Smart spawning - distribute fish across screen
-  if (side === 0 || side === 1) {
-    y = height/2 + 50 + Math.sin(lastTime * 0.1) * 30;
-  } else {
-    x = width/2 + 80 + Math.cos(lastTime * 0.15) * 40;
-  }
-  
-  const hp = Math.ceil(type.bHp * (0.75 + Math.random() * 0.6));
-  activeFish.push({ ...type, hp, x, y, dx: -0.5 - Math.random() * 1.5, dy: -2 - Math.random() * 3 });
-}
+    // Optimized spawning system - maintains target fish count
+    let maxFishCount = 8;
 
-// Boss spawning - random chance every 30-60 seconds
-setInterval(() => {
-  if (Math.random() < 0.005 && !boss) spawnBoss();
-}, 5000);
+    function spawnFish() {
+      if (activeFish.length >= maxFishCount) return;
+      
+      const type = fishTypes[Math.random() * fishTypes.length];
+      const side = Math.floor(Math.random() * 4);
+      let x, y;
+      
+      // Smart spawning - distribute fish across screen
+      if (side === 0 || side === 1) {
+        y = height/2 + 50 + Math.sin(lastTime * 0.1) * 30;
+      } else {
+        x = width/2 + 80 + Math.cos(lastTime * 0.15) * 40;
+      }
+      
+      const hp = Math.ceil(type.bHp * (0.75 + Math.random() * 0.6));
+      activeFish.push({ ...type, hp, x, y, dx: -0.5 - Math.random() * 1.5, dy: -2 - Math.random() * 3 });
+    }
 
-function spawnBoss() {
-  const hp = Math.ceil(500 * (0.85 + Math.random() * 0.45));
-  boss = { hp, maxHp: hp, val: 1.5 + Math.random() * 3, x: width + 140, y: height/2 + Math.random() * 140 - 70, dx: -0.75, dy: (Math.random() - 0.5) * 0.4, w: 0, flash: 0, sz: 110 };
-}
+    // Boss spawning - random chance every 30-60 seconds
+    setInterval(() => {
+      if (Math.random() < 0.005 && !boss) spawnBoss();
+    }, 5000);
 
-// Improved graphics with better color palette
-function drawFish(fish) {
-  ctx.save();
-  ctx.translate(fish.x, fish.y);
-  
-  // Depth gradient for 3D effect
-  const gradient = ctx.createLinearGradient(0, 0, 0, -fish.width);
-  gradient.addColorStop(0, '#1a1b2e');
-  gradient.addColorStop(0.5, '#0d1117');
-  gradient.addColorStop(1, '#1a1b2e');
-  ctx.fillStyle = gradient;
-  
-  // Streamlined body with species-specific details
-  const w = fish.width * (0.8 + Math.random() * 0.4);
-  const h = fish.height * (0.9 + Math.random() * 0.2);
-  ctx.beginPath();
-  ctx.moveTo(-w/2, -h/2);
-  ctx.quadraticCurveTo(0, -h*0.3, w, 0);
-  ctx.quadraticCurveTo(w*1.1, h*0.3, w*1.2, h);
-  ctx.closePath();
-  ctx.fill();
-  
-  // Species-specific features
-  if (fish.name === 'Swordfish') {
-    ctx.strokeStyle = '#C0C0C0';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(w*1.2, h);
-    ctx.lineTo(w*1.3, h*1.5); // Spear
-  }
-  
-  if (fish.name === 'Octopus') {
-    for (let i = 0; i < 6; i++) {
-      const tentacleLength = fish.width * 0.8 + Math.random() * 20;
-      ctx.strokeStyle = '#4a2000';
-      ctx.lineWidth = 3;
+    function spawnBoss() {
+      const hp = Math.ceil(500 * (0.85 + Math.random() * 0.45));
+      boss = { hp, maxHp: hp, val: 1.5 + Math.random() * 3, x: width + 140, y: height/2 + Math.random() * 140 - 70, dx: -0.75, dy: (Math.random() - 0.5) * 0.4, w: 0, flash: 0, sz: 110 };
+    }
+
+    // Improved graphics with better color palette
+    function drawFish(fish) {
+      ctx.save();
+      ctx.translate(fish.x, fish.y);
+      
+      // Depth gradient for 3D effect
+      const gradient = ctx.createLinearGradient(0, 0, 0, -fish.width);
+      gradient.addColorStop(0, '#1a1b2e');
+      gradient.addColorStop(0.5, '#0d1117');
+      gradient.addColorStop(1, '#1a1b2e');
+      ctx.fillStyle = gradient;
+      
+      // Streamlined body with species-specific details
+      const w = fish.width * (0.8 + Math.random() * 0.4);
+      const h = fish.height * (0.9 + Math.random() * 0.2);
       ctx.beginPath();
-      ctx.moveTo(w, h);
-      for (let j = 0; j < tentacleLength; j += 5) {
-        const angle = Math.random() * Math.PI;
-        ctx.lineTo(w + Math.cos(angle) * 5, h + Math.sin(angle) * 5);
+      ctx.moveTo(-w/2, -h/2);
+      ctx.quadraticCurveTo(0, -h*0.3, w, 0);
+      ctx.quadraticCurveTo(w*1.1, h*0.3, w*1.2, h);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Species-specific features
+      if (fish.name === 'Swordfish') {
+        ctx.strokeStyle = '#C0C0C0';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(w*1.2, h);
+        ctx.lineTo(w*1.3, h*1.5); // Spear
+      }
+      
+      if (fish.name === 'Octopus') {
+        for (let i = 0; i < 6; i++) {
+          const tentacleLength = fish.width * 0.8 + Math.random() * 20;
+          ctx.strokeStyle = '#4a2000';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(w, h);
+          for (let j = 0; j < tentacleLength; j += 5) {
+            const angle = Math.random() * Math.PI;
+            ctx.lineTo(w + Math.cos(angle) * 5, h + Math.sin(angle) * 5);
+          }
+        }
+      }
+      
+      if (fish.name === 'Crab King') {
+        // Glowing crab claws
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(-w*1.5, h);
+        ctx.quadraticCurveTo(w*1.3, h*1.2);
+        ctx.stroke();
+      }
+      
+      if (fish.name === 'Hammerhead') {
+        // Distinctive hammer head
+        const headWidth = fish.width * 1.8;
+        ctx.fillStyle = '#4a2000';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, headWidth/2, h*0.6);
+      }
+      
+      if (fish.name === 'Dragonfish') {
+        // Glowing stripes
+        for (let i = 0; i < 4; i++) {
+          ctx.strokeStyle = '#FF00FF';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          const yOffset = Math.sin(i * Math.PI * 2) * fish.height * 0.3;
+          ctx.moveTo(-w/2, -h/2 + yOffset);
+          ctx.lineTo(w/2, h/2 + yOffset);
+        }
+      }
+      
+      // Glowing eyes with species-specific color
+      ctx.fillStyle = fish.name === 'Dragonfish' ? '#FF00FF' : '#FFFFFF';
+      ctx.shadowColor = fish.name === 'Dragonfish' ? '#FF00FF' : 'transparent';
+      ctx.shadowBlur = fish.name === 'Dragonfish' ? 15 : 0;
+      for (let i = 0; i < 2; i++) {
+        ctx.beginPath();
+        ctx.ellipse(-w*0.3, -h*0.3 + (i%2?5:-5), 4, 0);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+
+    // Particle system with multiple types
+    function createExplosion(x, y, color, size) {
+      for (let i = 0; i < 30; i++) {
+        particles.push({
+          x: x + Math.random() * size - 5,
+          y: y + Math.random() * size - 5,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 8,
+          life: 1.0,
+          color: color,
+          size: Math.random() * size
+        });
       }
     }
-  }
-  
-  if (fish.name === 'Crab King') {
-    // Glowing crab claws
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.moveTo(-w*1.5, h);
-    ctx.quadraticCurveTo(w*1.3, h*1.2);
-    ctx.stroke();
-  }
-  
-  if (fish.name === 'Hammerhead') {
-    // Distinctive hammer head
-    const headWidth = fish.width * 1.8;
-    ctx.fillStyle = '#4a2000';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, headWidth/2, h*0.6);
-  }
-  
-  if (fish.name === 'Dragonfish') {
-    // Glowing stripes
-    for (let i = 0; i < 4; i++) {
-      ctx.strokeStyle = '#FF00FF';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      const yOffset = Math.sin(i * Math.PI * 2) * fish.height * 0.3;
-      ctx.moveTo(-w/2, -h/2 + yOffset);
-      ctx.lineTo(w/2, h/2 + yOffset);
-    }
-  }
-  
-  // Glowing eyes with species-specific color
-  ctx.fillStyle = fish.name === 'Dragonfish' ? '#FF00FF' : '#FFFFFF';
-  ctx.shadowColor = fish.name === 'Dragonfish' ? '#FF00FF' : 'transparent';
-  ctx.shadowBlur = fish.name === 'Dragonfish' ? 15 : 0;
-  for (let i = 0; i < 2; i++) {
-    ctx.beginPath();
-    ctx.ellipse(-w*0.3, -h*0.3 + (i%2?5:-5), 4, 0);
-    ctx.fill();
-  }
-  
-  ctx.restore();
-}
 
-// Particle system with multiple types
-function createExplosion(x, y, color, size) {
-  for (let i = 0; i < 30; i++) {
-    particles.push({
-      x: x + Math.random() * size - 5,
-      y: y + Math.random() * size - 5,
-      vx: (Math.random() - 0.5) * 8,
-      vy: (Math.random() - 0.5) * 8,
-      life: 1.0,
-      color: color,
-      size: Math.random() * size
+    function createSpark(x, y) {
+      particles.push({
+        x: x + (Math.random() - 0.5) * 20,
+        y: y + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * 15,
+        vy: (Math.random() - 0.5) * 15,
+        life: 0.8,
+        color: 'rgba(255, 255, 255, ' + Math.floor(Math.random() * 255),
+        size: 3
+      });
+    }
+
+    // Bullet with trail effect
+    let bullets = [];
+    function shootBullet(fish) {
+      const angle = Math.atan2(fish.vy, fish.vx);
+      const speed = 18;
+      const vx = Math.cos(angle) * speed;
+      const vy = Math.sin(angle) * speed;
+      
+      bullets.push({
+        x: fish.x + fish.width/2,
+        y: fish.y + fish.height/2,
+        vx: vx,
+        vy: vy,
+        life: 1.5,
+        trail: []
+      });
+    }
+
+    // Collision detection with early hit registration
+    function checkCollisions() {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        let hit = false;
+        
+        for (const fish of activeFish) {
+          if (rectIntersect(bullet.x, bullet.y, 6, 6, fish.x - fish.width/2, fish.y - fish.height/2, fish.width, fish.height)) {
+            fish.hp -= 15;
+            createExplosion(bullet.x, bullet.y, '#FFFF00', 8);
+            hit = true;
+          }
+        }
+        
+        if (hit) {
+          bullet.life -= 0.2;
+          if (fish.dead) removeFish(fish);
+        } else {
+          fish.flash = 10; // Brief invulnerability on hit
+        }
+      }
+      
+      if (bullet.life <= 0) bullets.splice(i, 1);
+    }
+
+    // Visual feedback improvements
+    function drawBackground() {
+      // Deep ocean gradient with vignette
+      const gradient = ctx.createRadialGradient(width/2, height, 0, width/2, height, 0.8);
+      gradient.addColorStop(0, '#0a0e17');
+      gradient.addColorStop(0.5, '#1a1b2e');
+      gradient.addColorStop(1, '#1f2638');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Caustic lighting effect
+      for (let i = 0; i < 5; i++) {
+        const x = Math.sin(i * 0.1) * width * 0.1 + lastTime * 0.5;
+        const y = height * 0.3 + Math.cos(i * 0.2) * height * 0.05;
+        const glow = ctx.createRadialGradient(x, y, 0, x + 100, y + 100, 0.3);
+        glow.addColorStop(0, 'rgba(255, 255, 255, 0.02)');
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+
+    function drawUI() {
+      ctx.font = 'bold 16px Orbitron';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(`Score: ${score}`, 20, 30);
+      ctx.fillText(`High Score: ${highScore}`, 15, 30);
+      ctx.fillText(`Credits: $${credits}`, 15, width - 40);
+    }
+
+    // Main game loop with performance optimizations
+    function gameLoop() {
+      const now = performance.now();
+      const dt = now - lastTime;
+      lastTime = now;
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, width, height);
+      
+      drawBackground();
+      
+      // Spawn fish (rate increases with score)
+      const spawnRate = Math.min(2 / difficulty, 0.5);
+      spawnTimer += dt;
+      if (spawnTimer > spawnRate && activeFish.length < maxFishCount * 1.2) {
+        spawnFish();
+        spawnTimer = 0;
+      }
+      
+      // Update all entities
+      for (const fish of activeFish) {
+        fish.x += fish.dx * dt;
+        fish.y += fish.dy * dt;
+        
+        if (fish.name === 'Swordfish') spearAttack(dt);
+        else if (fish.name === 'Octopus') inkCloud(dt);
+        else if (fish.name === 'Crab King') randomClawSwipe();
+        else if (fish.name === 'Hammerhead') electricShock(dt);
+      }
+      
+      // Update bullets
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        if (b.life <= 0) bullets.splice(i, 1);
+      }
+      
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+      
+      // Check collisions
+      checkCollisions();
+      
+      // Draw everything
+      for (const fish of activeFish) drawFish(fish);
+      for (const b of bullets) { ctx.fillStyle = '#FFFF00'; ctx.beginPath(); ctx.arc(b.x, b.y, 3, 0, Math.PI*2); ctx.fill(); }
+      for (const p of particles) { ctx.fillStyle = p.color; ctx.globalAlpha = p.life * 0.5; ctx.fillRect(p.x, p.y, p.size, p.size); }
+      
+      drawUI();
+      
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Input handling with aim assist
+    window.addEventListener('mousedown', e => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const targetFish = activeFish.reduce((closest, current) => {
+        const distToCursor = Math.hypot(x - current.x, y - current.y);
+        const distToClosest = closest ? Math.hypot(x - closest.x, y - closest.y) : Infinity;
+        return distToCursor < distToClosest ? current : closest;
+      }, null);
+      
+      if (targetFish) shootBullet(targetFish);
     });
-  }
-}
 
-function createSpark(x, y) {
-  particles.push({
-    x: x + (Math.random() - 0.5) * 20,
-    y: y + (Math.random() - 0.5) * 20,
-    vx: (Math.random() - 0.5) * 15,
-    vy: (Math.random() - 0.5) * 15,
-    life: 0.8,
-    color: 'rgba(255, 255, 255, ' + Math.floor(Math.random() * 255),
-    size: 3
-  });
-}
+    // Dynamic difficulty scaling
+    setInterval(() => {
+      difficulty = 1 + Math.min(score / 500, 3);
+      maxFishCount = 8 + Math.floor(score / 1000);
+    }, 10000);
 
-// Bullet with trail effect
-let bullets = [];
-function shootBullet(fish) {
-  const angle = Math.atan2(fish.vy, fish.vx);
-  const speed = 18;
-  const vx = Math.cos(angle) * speed;
-  const vy = Math.sin(angle) * speed;
-  
-  bullets.push({
-    x: fish.x + fish.width/2,
-    y: fish.y + fish.height/2,
-    vx: vx,
-    vy: vy,
-    life: 1.5,
-    trail: []
-  });
-}
-
-// Collision detection with early hit registration
-function checkCollisions() {
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    const bullet = bullets[i];
-    let hit = false;
-    
-    for (const fish of activeFish) {
-      if (rectIntersect(bullet.x, bullet.y, 6, 6, fish.x - fish.width/2, fish.y - fish.height/2, fish.width, fish.height)) {
-        fish.hp -= 15;
-        createExplosion(bullet.x, bullet.y, '#FFFF00', 8);
-        hit = true;
+    // Boss health bar
+    if (boss) {
+      const bossBar = document.createElement('div');
+      bossBar.style.cssText = 'position: fixed; top: 50px; left: 0; width: 300px; height: 20px; background: rgba(0,0,0,.8); border-radius: 10px;';
+      document.body.appendChild(bossBar);
+      
+      function updateBossBar() {
+        if (!boss) return;
+        const pct = (boss.hp / boss.maxHp) * 300;
+        bossBar.style.width = pct + 'px';
+        bossBar.style.background = boss.flash ? '#FF0000' : 'rgba(255, 100, 100, .8)';
       }
     }
-    
-    if (hit) {
-      bullet.life -= 0.2;
-      if (fish.dead) removeFish(fish);
-    } else {
-      fish.flash = 10; // Brief invulnerability on hit
-    }
-  }
-  
-  if (bullet.life <= 0) bullets.splice(i, 1);
-}
 
-// Visual feedback improvements
-function drawBackground() {
-  // Deep ocean gradient with vignette
-  const gradient = ctx.createRadialGradient(width/2, height, 0, width/2, height, 0.8);
-  gradient.addColorStop(0, '#0a0e17');
-  gradient.addColorStop(0.5, '#1a1b2e');
-  gradient.addColorStop(1, '#1f2638');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-  
-  // Caustic lighting effect
-  for (let i = 0; i < 5; i++) {
-    const x = Math.sin(i * 0.1) * width * 0.1 + lastTime * 0.5;
-    const y = height * 0.3 + Math.cos(i * 0.2) * height * 0.05;
-    const glow = ctx.createRadialGradient(x, y, 0, x + 100, y + 100, 0.3);
-    glow.addColorStop(0, 'rgba(255, 255, 255, 0.02)');
-    glow.addColorStop(1, 'transparent');
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, width, height);
-  }
-}
-
-function drawUI() {
-  ctx.font = 'bold 16px Orbitron';
-  ctx.textAlign = 'right';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText(`Score: ${score}`, 20, 30);
-  ctx.fillText(`High Score: ${highScore}`, 15, 30);
-  ctx.fillText(`Credits: $${credits}`, 15, width - 40);
-}
-
-// Main game loop with performance optimizations
-function gameLoop() {
-  const now = performance.now();
-  const dt = now - lastTime;
-  lastTime = now;
-  
-  // Clear canvas
-  ctx.clearRect(0, 0, width, height);
-  
-  drawBackground();
-  
-  // Spawn fish (rate increases with score)
-  const spawnRate = Math.min(2 / difficulty, 0.5);
-  spawnTimer += dt;
-  if (spawnTimer > spawnRate && activeFish.length < maxFishCount * 1.2) {
-    spawnFish();
-    spawnTimer = 0;
-  }
-  
-  // Update all entities
-  for (const fish of activeFish) {
-    fish.x += fish.dx * dt;
-    fish.y += fish.dy * dt;
-    
-    if (fish.name === 'Swordfish') spearAttack(dt);
-    else if (fish.name === 'Octopus') inkCloud(dt);
-    else if (fish.name === 'Crab King') randomClawSwipe();
-    else if (fish.name === 'Hammerhead') electricShock(dt);
-  }
-  
-  // Update bullets
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    const b = bullets[i];
-    b.x += b.vx * dt;
-    b.y += b.vy * dt;
-    if (b.life <= 0) bullets.splice(i, 1);
-  }
-  
-  // Update particles
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.life -= dt;
-    if (p.life <= 0) particles.splice(i, 1);
-  }
-  
-  // Check collisions
-  checkCollisions();
-  
-  // Draw everything
-  for (const fish of activeFish) drawFish(fish);
-  for (const b of bullets) { ctx.fillStyle = '#FFFF00'; ctx.beginPath(); ctx.arc(b.x, b.y, 3, 0, Math.PI*2); ctx.fill(); }
-  for (const p of particles) { ctx.fillStyle = p.color; ctx.globalAlpha = p.life * 0.5; ctx.fillRect(p.x, p.y, p.size, p.size); }
-  
-  drawUI();
-  
-  requestAnimationFrame(gameLoop);
-}
-
-// Input handling with aim assist
-window.addEventListener('mousedown', e => {
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  const targetFish = activeFish.reduce((closest, current) => {
-    const distToCursor = Math.hypot(x - current.x, y - current.y);
-    const distToClosest = closest ? Math.hypot(x - closest.x, y - closest.y) : Infinity;
-    return distToCursor < distToClosest ? current : closest;
-  }, null);
-  
-  if (targetFish) shootBullet(targetFish);
-});
-
-// Dynamic difficulty scaling
-setInterval(() => {
-  difficulty = 1 + Math.min(score / 500, 3);
-  maxFishCount = 8 + Math.floor(score / 1000);
-}, 10000);
-
-// Boss health bar
-if (boss) {
-  const bossBar = document.createElement('div');
-  bossBar.style.cssText = 'position: fixed; top: 50px; left: 0; width: 300px; height: 20px; background: rgba(0,0,0,.8); border-radius: 10px;';
-  document.body.appendChild(bossBar);
-  
-  function updateBossBar() {
-    if (!boss) return;
-    const pct = (boss.hp / boss.maxHp) * 300;
-    bossBar.style.width = pct + 'px';
-    bossBar.style.background = boss.flash ? '#FF0000' : 'rgba(255, 100, 100, .8)';
-  }
-}
-
-// Initialize and start
-function createRandomFish() {
-  const template = fishTypes[Math.random() * fishTypes.length];
-  return {
-    ...template properties...,
-    vx: (Math.random() - 0.5) * template.speed,
-    vy: -10 + Math.random() * 2,
-    width: 40 + Math.random() * 20,
-    height: 25 + Math.random() * 15,
-    active: true
-  };
-}
-
-gameLoop();
-</script>
+    // Start the game when page loads
+    window.onload = () => {
+      gameLoop();
+    };
+  </script>
 </body>
 </html>```
